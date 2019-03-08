@@ -36,11 +36,6 @@ From the ICS-ACI Jupyter notebook server, work through ex3.ipynb.
 You'll also want to run it as a PBS job using one of the CyberLAMP GPU nodes.  
 Review the results in the markdown file (and figures) created by the PBS job and use them to inform your responces.
 
-## Exercise 4
-#### Goal:  Use [Flux.jl](https://fluxml.ai/) to optimize a large model
-From your Jupyter notebook server, work through ex2.ipynb
-[Flux.jl GitHub Repo](https://github.com/FluxML/Flux.jl)
-[Model Zoo](https://github.com/FluxML/model-zoo)
 
 Remember to commit often, push your repository to GitHub and create a pull request as if you wanted to merge your work (presumably in your master branch) into the original branch (which contains the starter code). 
 
