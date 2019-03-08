@@ -1,0 +1,312 @@
+
+# Astro 528, Lab 7, Exercise 1
+## GPU Computing I:  Getting Started & Linear Algebra
+
+In this lab exercise, we'll verify that we have access to a GPU, learn a little about its properties and benchmark some simple operations on a GPU to see how performance compares.  While most laptops have a GPU, most will either note be setup for general purpose computing or will be so low power that the benchmarking results won't be very informative.  Therefore, students are advised to run the exercises in this lab on ICS-ACI rather than their own system (unless they're confident they have setup their own system for GPU computing properly).  
+
+The ICS-ACI Jupyter notebook server and interactive desktop provided by the ICS-ACI portal are now using interactive notes that include a GPU, and students should be able to run all the code there.  However, the GPUs on the interactive nodes are relatively modest GPUs.  Therefore, after you've stepped through the notebook, you'll want to submit a PBS job, so you can run the calculations on one of the CyberLAMP GPU nodes.  For that step, you'll use the [command line interface](https://ics.psu.edu/computing-services/ics-aci-user-guide/#05-00-basics-aci-resources) to submit the PBS jobs, following a similar syntax as the [lab's 6 README](https://github.com/PsuAstro528/lab6-start/blob/master/README.md).  
+
+## Setting up Julia to use the GPU
+First, we need to make sure that your computer can find the [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit).  I've installed version 9.1.0 in `/gpfs/group/ebf11/default/astro528/cuda` and all students in the class should have read access to it.  In order for other packages to know where to find it, we'll set the environment variable `CUDAHOME`.  You could do this in a dotfile (e.g., adding 
+```bash 
+export CUDAHOME=/gpfs/group/ebf11/default/astro528/cuda
+```
+to your `~/.bashrc` *before* you start the Jupyter notebook server or interactive desktop file.  If that worked, then the next cell should return that path.  If it didn't work, then the `else` part of the next cell should set it for you.
+
+```julia
+if haskey(ENV,"CUDAHOME")
+    println("The CUDAHOME environment variable has been set to: ",ENV["CUDAHOME"])
+else
+    println("The CUDAHOME environment variable has not been set.  Setting it now...")
+    ENV["CUDAHOME"] = "/gpfs/group/ebf11/default/astro528/cuda"
+end
+```
+
+Now, that we've told Julia were to find the CUDA toolkit, install the pacakages we'll be using, activate the current project.
+
+```julia
+using Pkg
+Pkg.activate(".")
+```
+
+And then install the necessary packages.  This instantiate should only need to be run once, assuming everything worked.  If you get errors, then you'll likely need to make sure CUDAHOME is set correctly and then use `Pkg.build` to rebuild those libraries.
+
+```julia
+Pkg.instantiate()  # Only need to run once for the whole lab (assuming it works the first time)
+```
+
+Don't worry if you get a warning about not finding the cudnn library.
+
+## CUDAdrv:  Julia interface to the CUDA driver
+
+For this first exercise, we'll install several packages individually to see what they do.  The [CUDAdrv.jl](https://juliagpu.gitlab.io/CUDAdrv.jl/) package is a Julia wrapper for the CUDA driver that allows programs to access an NVIDIA GPU.
+
+```julia
+using CUDAdrv
+```
+
+This provides very basic functionality, like querying what version of the CUDA Toolkit is being used,
+
+```julia
+CUDAdrv.version()
+```
+
+initializing the GPU, querying the name of the GPU being used,
+
+```julia
+gpu_dev = CuDevice(0)
+name(gpu_dev)
+```
+
+querying how much RAM is avaliable on the GPU, 
+
+```julia
+gpu_ram = Int64(totalmem(gpu_dev)) 
+println("GPU has ",gpu_ram/1024^3, "GB of RAM.")
+```
+
+and the version indicating the current GPU's ["compute capability"](https://en.wikipedia.org/wiki/CUDA#GPUs_supported).  
+
+```julia
+capability(gpu_dev)
+```
+
+In principle, the compute capability tells you the technical sepcifications of your GPU that would be needed to do fairly low-level programming.  Rather the looking things up online, you can query [a large list of GPU attributes](https://github.com/JuliaGPU/CUDAdrv.jl/blob/master/src/devices.jl#L60).  For example, how many multi-processors does the current GPU have?
+
+```julia
+attribute(gpu_dev,CUDAdrv.MULTIPROCESSOR_COUNT)
+```
+
+GPUs execute many calculations at once, typically thousands or even hundreds of thousands threads are run in a single call to the GPU kernel.  The threads are grouped into "blocks" and the GPU can distribute different blocks to different multiprocessors as it sees fit.  Each blocks may be broken down into one or multiple "warps" which are run on the same multiprocessor, but not necessarily at the same time.  All computations in one warp are executed in parallel on a single multiprocessor.  Let's check the maximum number of threads per block and how many threads are in one warp on your GPU.
+
+```julia
+attribute(gpu_dev,CUDAdrv.MAX_THREADS_PER_BLOCK)
+```
+
+```julia
+warpsize(gpu_dev)
+```
+
+If you have fewer threads in a block, than the warp size, then then some of the arithmetic units in the multiprocessor won't be used effectively.  
+Nevertheless, sometimes this is necessary, because there's a fixed number of registers per block.
+
+```julia
+attribute(gpu_dev,CUDAdrv.MAX_REGISTERS_PER_BLOCK)
+```
+
+If one wants to get the full power of GPUs, then one is likely to do at least some low-level GPU programming in which one would need to make use of this information to choose how to divide up the work among threads and blocks efficiently.  
+
+### GPUArrays:  A High-level Julia interface to GPU programming
+
+For this exercise, we'll use the [GPUArrays.jl](https://github.com/JuliaGPU/GPUArrays.jl) package that provides a high-level interface that hides the above details from the programmer.  Different GPU manufacturers provide different functionality and libraries.  The GPUs at ICS-ACI are NVIDIA GPUs, and these are most efficiently programmed using [CUDA](https://en.wikipedia.org/wiki/CUDA).  On the other hand, AMD GPUs are most efficiently programmed using [OpenCL](https://en.wikipedia.org/wiki/OpenCL).  Some programmers perfer to use OpenCL, since CUDA is a proprietary language.  Julia has mid/high-level libraries for array operations for using either CUDA (i.e., [CuArrays.jl](https://github.com/JuliaGPU/CuArrays.jl)) or OpenCL (i.e., [CLArrays.jl](https://github.com/JuliaGPU/CLArrays.jl)).  It would be nice to be able to write code that can run with either type of GPU.  Indeed, the [GPUArrays.jl](https://github.com/JuliaGPU/GPUArrays.jl) package provides just that.  For many applications, [GPUArrays.jl](https://github.com/JuliaGPU/GPUArrays.jl) provides all you need to get orders of magnitude speed-up relative to a CPU.  
+
+Since this is our first time using these packages, let's load them one at a time, just in case there are any error messages.  Since CuArrays is the lower-level package, let's first make sure that load successfully.
+
+```julia
+using CuArrays
+```
+
+Assuming that CuArrays loaded successfuly, proceed to load the GPUArrays package.
+
+```julia
+using GPUArrays
+```
+
+First, we'll benchmark some linear algebra.  Because linear algebra is so common, there are efficient [BLAS libraries](https://en.wikipedia.org/wiki/Basic_Linear_Algebra_Subprograms) avaliable for both CPUs and GPU.
+Create some matrices and arrays for testing.
+
+```julia
+N = 256
+A_h = randn(N,N)
+#A_h = A_h * A_h' # make a positive definite matrix
+x_h = randn(N);
+```
+
+```julia
+b_h = A_h*x_h;
+```
+
+To perform calculations on a GPU, we'll need to send the data from the CPU to the GPU.  The CuArrays pacakge provides a datatype `CuDeviceArray` for arrays that live on the device.  Manually specifying when to send data back and forth can be good for efficiency, but does require more care.  So instead, we use `CuArray`'s that take care of moving the data between the CPU (or "host") memory system and the GPU (or "device") memory system for us.  
+
+We can create a 'CuArray' from an existing Array simply with the `cu(.)` function.  Then we can proceed to do arithmetic on them with the same syntax as when using standard Arrays.  (Generic programming is amazing!)
+
+```julia
+A_d = cu(A_h)
+x_d = cu(x_h)
+b_d = A_d*x_d
+```
+
+First, note the type of each variable. 
+
+```julia
+typeof(A_d), typeof(x_d), typeof(b_d)
+```
+
+By using a CuArray, the result calculation is also stored as a CuArray and left on the GPU.  While CuArrays let us access individual elements, if we want to look at the whole array, then it would be faster to copy all the data at once to CPU.  We can bring the full result back to the host, using `Array(.)` or `collect(.)`.  
+
+```julia
+b_comp_h = Array(b_d)
+```
+
+Next, we'll compare the results.  What do you expect for the maximum difference in any element in `b`?
+        
+INSERT RESPONSE
+
+```julia
+maximum(b_comp_h .- b_h)
+```
+
+How did the results compare to your expectations?  
+
+INSERT RESPONSE
+
+One thing to keep in mind is that most "consumer grade" GPUs are designed to only perform single-precision arithmetic.  As of Spring 2019, the GPUs on the ACI interactive nodes only support single-precision arithmetic.  The CyberLAMP GPU nodes have GPUs that support double precision arithmetic.  You can test whether your GPU supports double precission by running
+
+```julia
+GPUArrays.supports_double(0)
+```
+
+Once you submit this notebook as a PBS job to a CyberLAMP GPU node, come back to revisit the differences in the results and note how they compared to the results using a single precision GPU.  
+
+INSERT RESPONSE (can skip for now, but come back to once you've run this on a CyberLAMP GPU node)
+
+## Benchmarking GPU for Linear Algebra
+Now, we'll do some benchmarking of the CPU vs GPU, so let's load the usual BenchmarkTools package.   
+
+```julia
+using BenchmarkTools, Statistics
+```
+
+Note that we'll be able to use the exact same macros to benchmark code running on either the CPU or the GPU.  To keep things reasonably fast, we'll specify that we only want Julia to benchmark each calculation a few times.  
+Calls to the GPU run asynchronously.  So if we want to benchmark how long is required to the calculation to complete, we need to tell Julia to wait until the calculation has been synchronized.  We can do that either with the `@sync` macro in CuArrays or with the `synchronize(.)` function in GPUArrays to make our code more general.  `@sync` makes everyone wait until everything is complete.  `synchronize(x)` only waits until the array `x` is synchronized.
+
+```julia
+@benchmark b_d = $A_d*$x_d samples=5
+```
+
+How long does it take to launch the GPU kernel and exit?
+
+INSERT RESPONSE
+
+```julia
+@benchmark CuArrays.@sync(b_d = $A_d*$x_d) samples=5
+```
+
+How long did it take to complete the calculation and store to to an array on the GPU?  How does this compare to the cost of launching the kernel?  What are the implications for the ammount of work you'd want per GPU call in order to make efficient use of the GPU?
+
+INSERT RESPONSE
+
+```julia
+@benchmark ( b_d = A_d*x_d;  GPUArrays.synchronize(b_d); ) samples=5
+```
+
+Since we'll want to perform benchmarks for several problem sizes, I've provided a function `run_benchmarks` to make things a little easier.
+
+```julia
+""" run_benchmarks(N; opts)
+Benchmark matrix-vector multiplication and optionally linear solve.
+Optional arguments:
+- num_samples:  How many times to perform each calculation being benchmarked
+- calc_solve: Whether to benchmark linear solve (false)
+- run_cpu:  Whether to perform benchmarks on cpu (true)
+- run_gpu:  Whether to perform benchmarks on gpu (true if GPUArrays is loaded)
+- verbose:  Whether to print status updates.
+Output: A dictionary with results of each benchmark performed and 
+        optionally the difference in final CPU and GPU calculations (if both are run).  
+"""
+function run_benchmarks(N::Integer; num_samples=3, run_cpu=true, run_gpu=isdefined(Main,:GPUArrays), 
+                            mat_vec=true, mat_mat=false, compare=false, verbose=false )
+   verbose && println("Benchmarking with problem size = ",N)
+   A_h = randn(N,N)
+   x_h = randn(N)
+   output = Dict()
+   if run_gpu
+      A_d = cu(A_h)
+      x_d = cu(x_h)
+   end
+   if mat_vec
+      if run_cpu
+         verbose && println("Benchmarking matrix-vector multiply on CPU")
+         # The `$` signs below specify that we want benchmark to use the local variables, rather than global variables with same name
+         output["cpu_mat_vec_mul"] = @benchmark b_h = $A_h*$x_h samples=num_samples
+      end
+      if run_gpu
+         verbose && println("Benchmarking matrix-vector multiply on GPU")
+         #output["gpu_mat_vec_mul"] = @benchmark CuArrays.@sync( b_d = $A_d*$x_d) samples=num_samples
+         output["gpu_mat_vec_mul"] = @benchmark ( b_d = $A_d*$x_d; GPUArrays.synchronize(b_d) ) samples=num_samples
+      end
+      if run_cpu && run_gpu && compare
+        b_h = A_h*x_h
+        b_d = A_d*x_d
+        output["diff_mat_vec_mul"] = convert(typeof(b_h),Array(b_d)).-b_h
+      end
+   end
+   if mat_mat
+      if run_cpu
+         verbose && println("Benchmarking matrix-matrix multiply on CPU")
+         # The `$` signs below specify that we want benchmark to use the local variables, rather than global variables with same name
+         output["cpu_mat_mat_mul"] = @benchmark Asq_h = $A_h*$A_h' samples=num_samples
+      end
+      if run_gpu
+         verbose && println("Benchmarking matrix-matrix multiply on GPU")
+         output["gpu_mat_mat_mul"] = @benchmark ( Asq_d = $A_d*$A_d'; GPUArrays.synchronize(Asq_d) ) samples=num_samples
+      end
+      if run_cpu && run_gpu && compare
+        Asq_h = A_h*A_h'
+        Asq_d = A_d*A_d'
+        output["diff_mat_mat_mul"] = convert(typeof(Asq_h),Array(Asq_d)).-Asq_h
+      end
+   end
+   return output
+end
+```
+
+First, do a quick test to see how it works.
+
+
+```julia
+benchmark_result = run_benchmarks(128,verbose=true,mat_vec=true,compare=true)
+```
+
+We'll extract the median run time for the multiplication using the CPU with expressions like
+
+```julia
+median(benchmark_result["cpu_mat_vec_mul"].times)
+```
+
+Now let's perform run some benchmarks and plot the results.  After you've made your first plot, you may want to increase the range of problem sizes slightly to extend your plot.
+
+```julia
+using Plots
+#pyplot()  # in case gr() gives you trouble
+```
+
+```julia
+problem_sizes = [2^i for i in 2:9]
+benchmark_results = map( s->run_benchmarks(s,mat_mat=true), problem_sizes )
+```
+
+```julia
+cpu_times = map(i->median(benchmark_results[i]["cpu_mat_vec_mul"].times),1:length(problem_sizes))
+plt = plot(log2.(problem_sizes),log10.(cpu_times*1e-9), label="CPU mat_vec_mul",xaxis="log_2 N", yaxis="log_10 (Time/s)", legend=:topleft)
+if haskey(benchmark_results[1],"gpu_mat_vec_mul")
+    gpu_times = map(i->median(benchmark_results[i]["gpu_mat_vec_mul"].times),1:length(problem_sizes))
+    plt = plot!(log2.(problem_sizes),log10.(gpu_times*1e-9), label="GPU mat_vec_mul")
+end
+if haskey(benchmark_results[1],"cpu_mat_mat_mul")
+    cpu_times = map(i->median(benchmark_results[i]["cpu_mat_mat_mul"].times),1:length(problem_sizes))
+    plt = plot!(log2.(problem_sizes),log10.(cpu_times*1e-9), label="CPU mat_mat_mul")
+end
+if haskey(benchmark_results[1],"gpu_mat_mat_mul")
+    gpu_times = map(i->median(benchmark_results[i]["gpu_mat_mat_mul"].times),1:length(problem_sizes))
+    plt = plot!(log2.(problem_sizes),log10.(gpu_times*1e-9), label="GPU mat_mat_mul")
+end
+display(plt)
+```
+
+## Implications for your class project
+Does your project involve linear algebra on large matrices/vectors?  Does it use thousands of linear algebra calculations with smaller matrices/vectors?
+If yes to either, then discuss the implications of the results from this exercise for the suitability of using GPUs to accelerate the linear algebra in your class project.
+
+INSERT RESPONSE
+
