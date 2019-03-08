@@ -58,20 +58,20 @@ gpu_dev = CuDevice(0)
 name(gpu_dev)
 ```
 
-querying how much RAM is avaliable on the GPU, 
+querying how much RAM is avaliable on the GPU,
 
 ```julia
 gpu_ram = Int64(totalmem(gpu_dev)) 
 println("GPU has ",gpu_ram/1024^3, "GB of RAM.")
 ```
 
-and the version indicating the current GPU's ["compute capability"](https://en.wikipedia.org/wiki/CUDA#GPUs_supported).  
+and the version indicating the current GPU's ["compute capability"](https://en.wikipedia.org/wiki/CUDA#GPUs_supported).
 
 ```julia
 capability(gpu_dev)
 ```
 
-In principle, the compute capability tells you the technical sepcifications of your GPU that would be needed to do fairly low-level programming.  Rather the looking things up online, you can query [a large list of GPU attributes](https://github.com/JuliaGPU/CUDAdrv.jl/blob/master/src/devices.jl#L60).  For example, how many multi-processors does the current GPU have?
+In principle, the compute capability tells you the technical sepcifications of your GPU that would be needed to do fairly low-level programming.  Rather than [looking up the specs of your graphics card online](https://en.wikipedia.org/wiki/List_of_Nvidia_graphics_processing_units), you can query [a large list of GPU attributes](https://github.com/JuliaGPU/CUDAdrv.jl/blob/master/src/devices.jl#L60).  For example, how many multi-processors does the current GPU have?
 
 ```julia
 attribute(gpu_dev,CUDAdrv.MULTIPROCESSOR_COUNT)
@@ -116,9 +116,8 @@ First, we'll benchmark some linear algebra.  Because linear algebra is so common
 Create some matrices and arrays for testing.
 
 ```julia
-N = 256
+N = 1024
 A_h = randn(N,N)
-#A_h = A_h * A_h' # make a positive definite matrix
 x_h = randn(N);
 ```
 
@@ -136,13 +135,13 @@ x_d = cu(x_h)
 b_d = A_d*x_d
 ```
 
-First, note the type of each variable. 
+First, note the type of each variable.
 
 ```julia
 typeof(A_d), typeof(x_d), typeof(b_d)
 ```
 
-By using a CuArray, the result calculation is also stored as a CuArray and left on the GPU.  While CuArrays let us access individual elements, if we want to look at the whole array, then it would be faster to copy all the data at once to CPU.  We can bring the full result back to the host, using `Array(.)` or `collect(.)`.  
+By using a CuArray, the result calculation is also stored as a CuArray and left on the GPU.  While CuArrays let us access individual elements, if we want to look at the whole array, then it would be faster to copy all the data at once to CPU.  We can bring the full result back to the host, using `Array(.)` or `collect(.)`.
 
 ```julia
 b_comp_h = Array(b_d)
@@ -160,18 +159,20 @@ How did the results compare to your expectations?
 
 INSERT RESPONSE
 
-One thing to keep in mind is that most "consumer grade" GPUs are designed to only perform single-precision arithmetic.  As of Spring 2019, the GPUs on the ACI interactive nodes only support single-precision arithmetic.  The CyberLAMP GPU nodes have GPUs that support double precision arithmetic.  You can test whether your GPU supports double precission by running
+One thing to keep in mind is that most "consumer grade" GPUs are designed to only perform single-precision arithmetic.  Even GPUs that do support double precission are often significantly slower at double precission arithmetic than single precission.  The difference is particularly noticable for "consumer grade" GPUs.  When we need double precission, we can specify that explicitly.  Below we will use double precision on the GPU and test its accuracy.
 
 ```julia
-GPUArrays.supports_double(0)
+A_d64 = CuArray{Float64}(A_h)
+x_d64 = CuArray{Float64}(x_h)
+b_d64 = A_d64*x_d64
+maximum(Array(b_d64) .- b_h)
 ```
 
-Once you submit this notebook as a PBS job to a CyberLAMP GPU node, come back to revisit the differences in the results and note how they compared to the results using a single precision GPU.  
+Now, how do the results compare to your expectations?  
 
-INSERT RESPONSE (can skip for now, but come back to once you've run this on a CyberLAMP GPU node)
 
 ## Benchmarking GPU for Linear Algebra
-Now, we'll do some benchmarking of the CPU vs GPU, so let's load the usual BenchmarkTools package.   
+Now, we'll do some benchmarking of the CPU vs GPU, so let's load the usual BenchmarkTools package.
 
 ```julia
 using BenchmarkTools, Statistics
@@ -189,7 +190,7 @@ How long does it take to launch the GPU kernel and exit?
 INSERT RESPONSE
 
 ```julia
-@benchmark CuArrays.@sync(b_d = $A_d*$x_d) samples=5
+@benchmark CuArrays.@sync( b_d = $A_d*$x_d) samples=5
 ```
 
 How long did it take to complete the calculation and store to to an array on the GPU?  How does this compare to the cost of launching the kernel?  What are the implications for the ammount of work you'd want per GPU call in order to make efficient use of the GPU?
@@ -197,7 +198,13 @@ How long did it take to complete the calculation and store to to an array on the
 INSERT RESPONSE
 
 ```julia
-@benchmark ( b_d = A_d*x_d;  GPUArrays.synchronize(b_d); ) samples=5
+@benchmark ( b_d .= $A_d*$x_d;  GPUArrays.synchronize(b_d); ) samples=5
+```
+
+We can compare that to double precission
+
+```julia
+@benchmark ( b_d64 .= $A_d64*$x_d64;  GPUArrays.synchronize(b_d64); ) samples=5
 ```
 
 Since we'll want to perform benchmarks for several problem sizes, I've provided a function `run_benchmarks` to make things a little easier.
@@ -214,15 +221,15 @@ Optional arguments:
 Output: A dictionary with results of each benchmark performed and 
         optionally the difference in final CPU and GPU calculations (if both are run).  
 """
-function run_benchmarks(N::Integer; num_samples=3, run_cpu=true, run_gpu=false),
-                            mat_vec=true, mat_mat=false, compare=false, verbose=false )
+function run_benchmarks(N::Integer; num_samples=3, run_cpu=true, run_gpu=false,
+                            gpu_type = Float32, mat_vec=true, mat_mat=false, compare=false, verbose=false )
    verbose && println("Benchmarking with problem size = ",N)
    A_h = randn(N,N)
    x_h = randn(N)
    output = Dict()
    if run_gpu
-      A_d = cu(A_h)
-      x_d = cu(x_h)
+      A_d = CuArray{gpu_type}(A_h)
+      x_d = CuArray{gpu_type}(x_h)
    end
    if mat_vec
       if run_cpu
@@ -263,15 +270,22 @@ end
 
 First, do a quick test to see how it works.
 
-
 ```julia
 have_gpu = @isdefined GPUArrays
-benchmark_result = run_benchmarks(128,verbose=true,mat_vec=true,use_gpu=have_gpu,compare=true)
+benchmark_result = run_benchmarks(128,verbose=true,mat_vec=true,run_gpu=have_gpu,compare=true)
 ```
 
 We'll extract the median run time for the multiplication using the CPU with expressions like
 
 ```julia
+median(benchmark_result["cpu_mat_vec_mul"].times)
+```
+
+And compare this to the performance using double precission.
+
+```julia
+have_gpu = @isdefined GPUArrays
+benchmark_result = run_benchmarks(128,verbose=true,gpu_type=Float64,mat_vec=true,run_gpu=have_gpu,compare=true)
 median(benchmark_result["cpu_mat_vec_mul"].times)
 ```
 
@@ -283,23 +297,46 @@ using Plots
 ```
 
 ```julia
-problem_sizes = [2^i for i in 2:9]
-benchmark_results = map( s->run_benchmarks(s,mat_mat=true,run_gpu=have_gpu), problem_sizes )
+problem_sizes = [2^i for i in 2:12]
+benchmark_results32 = map( s->run_benchmarks(s,mat_mat=true,run_gpu=have_gpu,gpu_type=Float32), problem_sizes )
 ```
 
 ```julia
-cpu_times = map(i->median(benchmark_results[i]["cpu_mat_vec_mul"].times),1:length(problem_sizes))
-plt = plot(log2.(problem_sizes),log10.(cpu_times*1e-9), label="CPU mat_vec_mul",xaxis="log_2 N", yaxis="log_10 (Time/s)", legend=:topleft)
-if haskey(benchmark_results[1],"gpu_mat_vec_mul")
-    gpu_times = map(i->median(benchmark_results[i]["gpu_mat_vec_mul"].times),1:length(problem_sizes))
+cpu_times = map(i->median(benchmark_results32[i]["cpu_mat_vec_mul"].times),1:length(problem_sizes))
+plt = plot(log2.(problem_sizes),log10.(cpu_times*1e-9), label="CPU mat_vec_mul",xaxis="log_2 N", yaxis="log_10 (Time/s)", title="Float32", legend=:topleft)
+if haskey(benchmark_results32[1],"gpu_mat_vec_mul")
+    gpu_times = map(i->median(benchmark_results32[i]["gpu_mat_vec_mul"].times),1:length(problem_sizes))
     plt = plot!(log2.(problem_sizes),log10.(gpu_times*1e-9), label="GPU mat_vec_mul")
 end
-if haskey(benchmark_results[1],"cpu_mat_mat_mul")
-    cpu_times = map(i->median(benchmark_results[i]["cpu_mat_mat_mul"].times),1:length(problem_sizes))
+if haskey(benchmark_results32[1],"cpu_mat_mat_mul")
+    cpu_times = map(i->median(benchmark_results32[i]["cpu_mat_mat_mul"].times),1:length(problem_sizes))
     plt = plot!(log2.(problem_sizes),log10.(cpu_times*1e-9), label="CPU mat_mat_mul")
 end
-if haskey(benchmark_results[1],"gpu_mat_mat_mul")
-    gpu_times = map(i->median(benchmark_results[i]["gpu_mat_mat_mul"].times),1:length(problem_sizes))
+if haskey(benchmark_results32[1],"gpu_mat_mat_mul")
+    gpu_times = map(i->median(benchmark_results32[i]["gpu_mat_mat_mul"].times),1:length(problem_sizes))
+    plt = plot!(log2.(problem_sizes),log10.(gpu_times*1e-9), label="GPU mat_mat_mul")
+end
+display(plt)
+```
+
+```julia
+problem_sizes = [2^i for i in 2:9]
+benchmark_results64 = map( s->run_benchmarks(s,mat_mat=false,run_gpu=have_gpu,gpu_type=Float64), problem_sizes )
+```
+
+```julia
+cpu_times = map(i->median(benchmark_results64[i]["cpu_mat_vec_mul"].times),1:length(problem_sizes))
+plt = plot(log2.(problem_sizes),log10.(cpu_times*1e-9), label="CPU mat_vec_mul",xaxis="log_2 N", yaxis="log_10 (Time/s)", title="Float64", legend=:topleft)
+if haskey(benchmark_results64[1],"gpu_mat_vec_mul")
+    gpu_times = map(i->median(benchmark_results64[i]["gpu_mat_vec_mul"].times),1:length(problem_sizes))
+    plt = plot!(log2.(problem_sizes),log10.(gpu_times*1e-9), label="GPU mat_vec_mul")
+end
+if haskey(benchmark_results64[1],"cpu_mat_mat_mul")
+    cpu_times = map(i->median(benchmark_results64[i]["cpu_mat_mat_mul"].times),1:length(problem_sizes))
+    plt = plot!(log2.(problem_sizes),log10.(cpu_times*1e-9), label="CPU mat_mat_mul")
+end
+if haskey(benchmark_results64[1],"gpu_mat_mat_mul")
+    gpu_times = map(i->median(benchmark_results64[i]["gpu_mat_mat_mul"].times),1:length(problem_sizes))
     plt = plot!(log2.(problem_sizes),log10.(gpu_times*1e-9), label="GPU mat_mat_mul")
 end
 display(plt)
@@ -307,7 +344,6 @@ display(plt)
 
 ## Implications for your class project
 Does your project involve linear algebra on large matrices/vectors?  Does it use thousands of linear algebra calculations with smaller matrices/vectors?
-If yes to either, then discuss the implications of the results from this exercise for the suitability of using GPUs to accelerate the linear algebra in your class project.
+If yes to either, then discuss the implications of the results from this exercise for the suitability of using GPUs to accelerate the linear algebra in your class project.  What precission would you use?
 
 INSERT RESPONSE
-

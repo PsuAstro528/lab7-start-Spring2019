@@ -53,7 +53,7 @@ function calc_ecc_anom_itterative_laguerre(mean_anom, ecc, tol, max_its)
     for i in 1:max_its
        E_old = E
        E = update_ecc_anom_laguerre(E_old, M, ecc)
-       if abs(E-E_old)<tol break end
+       if abs(E-E_old)<convert(typeof(mean_anom),tol) break end
     end
     return E
 end
@@ -67,17 +67,16 @@ function calc_ecc_anom_itterative_laguerre_gpu(mean_anom, ecc, tol, max_its)
     for i in 1:max_its
        E_old = E
        E = update_ecc_anom_laguerre_gpu(E_old, M, ecc)
-       if abs(E-E_old)<tol break end
+       if abs(E-E_old)<convert(typeof(mean_anom),tol) break end
     end
     return E
 end
 
 const default_max_its_laguerre = 200
-const default_ecc_anom_tol_cpu = 1e-8
-const default_ecc_anom_tol_gpu = 1f-8
+const default_ecc_anom_tol = 1e-8
 "Calculate eccentric anomaly given mean anomaly and eccentricty (in radians)"
-calc_ecc_anom_cpu(mean_anom, ecc) = calc_ecc_anom_itterative_laguerre(mean_anom, ecc, default_ecc_anom_tol_cpu, default_max_its_laguerre)
-calc_ecc_anom_gpu(mean_anom, ecc) = calc_ecc_anom_itterative_laguerre_gpu(mean_anom, ecc, default_ecc_anom_tol_gpu, default_max_its_laguerre)
+calc_ecc_anom_cpu(mean_anom, ecc) = calc_ecc_anom_itterative_laguerre(mean_anom, ecc, default_ecc_anom_tol, default_max_its_laguerre)
+calc_ecc_anom_gpu(mean_anom, ecc) = calc_ecc_anom_itterative_laguerre_gpu(mean_anom, ecc, default_ecc_anom_tol, default_max_its_laguerre)
 calc_ecc_anom(mean_anom, ecc) = calc_ecc_anom_cpu(mean_anom, ecc)
 
 end # module KeplerEqn
