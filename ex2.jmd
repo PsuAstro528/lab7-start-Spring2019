@@ -24,12 +24,6 @@ Pkg.activate(".")
 ```
 
 ```julia
-#using CUDAdrv
-```
-
-This provides very basic functionality, like querying what version of the CUDA Toolkit is being used,
-
-```julia
 using CUDAnative, CuArrays, GPUArrays
 ```
 
@@ -55,92 +49,6 @@ To keep the notebook relatively clean, the code for solving Kepler's equation is
 ```julia
 include("src/kepler_eqn.jl")
 using .KeplerEqn
-
-#=
-"Solve Computing Eccentric Anomaly from Mean Anomally via Kepler's Equation"
-module KeplerEqn
-
-export calc_ecc_anom
-export calc_ecc_anom_cpu, calc_ecc_anom_gpu
-using CUDAnative
-
-"""   ecc_anom_init_guess_danby(M, ecc)
-Initial guess for eccentric anomaly given mean anomaly (M) and eccentricity (ecc)
-    Based on "The Solution of Kepler's Equations - Part Three"  
-    Danby, J. M. A. (1987) Journal: Celestial Mechanics, Volume 40, Issue 3-4, pp. 303-312  1987CeMec..40..303D
-"""
-function ecc_anom_init_guess_danby(M, ecc)
-    k = convert(typeof(ecc),0.85)
-    if(M<zero(M)) M += 2pi end
-    (M<pi) ? M + k*ecc : M - k*ecc;
-end
-
-"""   update_ecc_anom_laguerre(E, M, ecc)
-Update the current guess (E) for the solution to Kepler's equation given mean anomaly (M) and eccentricity (ecc)
-   Based on "An Improved Algorithm due to Laguerre for the Solution of Kepler's Equation"
-   Conway, B. A.  (1986) Celestial Mechanics, Volume 39, Issue 2, pp.199-211  1986CeMec..39..199C
-"""
-function update_ecc_anom_laguerre(E, M, ecc)
-  es = ecc*sin(E)
-  ec = ecc*cos(E)
-  F = (E-es)-M
-  Fp = one(E)-ec
-  Fpp = es
-  n = 5
-  root = sqrt(abs((n-1)*((n-1)*Fp*Fp-n*F*Fpp)))
-  denom = Fp>zero(E) ? Fp+root : Fp-root
-  return E-n*F/denom
-end
-
-"Same as update_ecc_anom_laguerre_cpu, except uses GPU math functions"
-function update_ecc_anom_laguerre_gpu(E, M, ecc)
-  es = ecc*CUDAnative.sin(E)
-  ec = ecc*CUDAnative.cos(E)
-  F = (E-es)-M
-  Fp = one(E)-ec
-  Fpp = es
-  n = 5
-  root = CUDAnative.sqrt(abs((n-1)*((n-1)*Fp*Fp-n*F*Fpp)))
-  denom = Fp>zero(E) ? Fp+root : Fp-root
-  return E-n*F/denom
-end
-
-"Loop to update the current estimate of the solution to Kepler's equation"
-function calc_ecc_anom_itterative_laguerre(mean_anom, ecc, tol, max_its)
-    M = mod(mean_anom,convert(typeof(mean_anom),2pi))
-    E = ecc_anom_init_guess_danby(M,ecc)
-    for i in 1:max_its
-       E_old = E
-       E = update_ecc_anom_laguerre(E_old, M, ecc)
-       if abs(E-E_old)<tol break end
-    end
-    return E
-end
-
-"Loop to update the current estimate of the solution to Kepler's equation.  Calls GPU update"
-function calc_ecc_anom_itterative_laguerre_gpu(mean_anom, ecc, tol, max_its)
-    @assert zero(ecc) <= ecc < one(ecc)
-    @assert tol*100 <= one(tol)
-    M = mod(mean_anom,convert(typeof(mean_anom),2pi))
-    E = ecc_anom_init_guess_danby(M,ecc)
-    for i in 1:max_its
-       E_old = E
-       E = update_ecc_anom_laguerre_gpu(E_old, M, ecc)
-       if abs(E-E_old)<tol break end
-    end
-    return E
-end
-
-const default_max_its_laguerre = 200
-const default_ecc_anom_tol_cpu = 1e-8
-const default_ecc_anom_tol_gpu = 1f-8
-"Calculate eccentric anomaly given mean anomaly and eccentricty (in radians)"
-calc_ecc_anom_cpu(mean_anom, ecc) = calc_ecc_anom_itterative_laguerre(mean_anom, ecc, default_ecc_anom_tol_cpu, default_max_its_laguerre)
-calc_ecc_anom_gpu(mean_anom, ecc) = calc_ecc_anom_itterative_laguerre_gpu(mean_anom, ecc, default_ecc_anom_tol_gpu, default_max_its_laguerre)
-calc_ecc_anom(mean_anom, ecc) = calc_ecc_anom_cpu(mean_anom, ecc)
-
-end # module KeplerEqn
-=#
 ```
 
 Next, we'll create a simple 2-d grid of values of the eccentricity and mean anomaly.  (Feel free to remove the `;`'s to inspect the results.)
@@ -156,8 +64,9 @@ mean_anom_h = [2pi*j/num_mean_anom for i in 0:(num_ecc-1), j in 0:(num_mean_anom
 As before, we can put these into GPUArrays and perform the calculation on the GPU using Julia's dot-syntax for broadcasting the function to each element of the arrays.
 
 ```julia
-ecc_d = cu(ecc_h)
-mean_anom_d = cu(mean_anom_h)
+RvPlanetParamT = Float32
+ecc_d = CuArray{RvPlanetParamT}(ecc_h)
+mean_anom_d = CuArray{RvPlanetParamT}(mean_anom_h)
 ecc_anom_d = calc_ecc_anom.(mean_anom_d,ecc_d)
 ```
 
@@ -169,10 +78,10 @@ CuArrays.@time CuArrays.@sync( ecc_anom_d = calc_ecc_anom.(mean_anom_d,ecc_d) )
 CuArrays.@time CuArrays.@sync( ecc_anom_d = calc_ecc_anom.(mean_anom_d,ecc_d) )
 ```
 
-At this point, the GPU was likely slower than the CPU.  We can further improve the performance by having the GPU write directly to a pre-allocated array, using `.=`.  While this will give us a speed boost, the calculation is performed entirely on the GPU and that comes with some limitations.  In particular, the default `sin` and `sqrt` functions have error handling built in that isn't compatible with the GPU.  The [CUDAnative.jl](https://github.com/JuliaGPU/CUDAnative.jl) package provides access to numerous CUDA-specific function that we can use to work around this problem.  We'll simply  replace calls to `sin(x)` with calls to `CUDAnative.sin(x)` (and similar for `sqrt`).  That's been implemented that in a similar function calc_ecc_anom_gpu, so you can see how to use this technique for your project.  
+At this point, the GPU was likely slower than the CPU.  We can further improve the performance by having the GPU write directly to a pre-allocated array, using `.=`.  While this will give us a speed boost, the calculation is performed entirely on the GPU and that comes with some limitations.  In particular, the default `sin` and `sqrt` functions have error handling built in that isn't compatible with the GPU.  The [CUDAnative.jl](https://github.com/JuliaGPU/CUDAnative.jl) package provides access to numerous CUDA-specific function that we can use to work around this problem.  We'll simply  replace calls to `sin(x)` with calls to `CUDAnative.sin(x)` (and similar for `sqrt`).  That's been implemented that in a similar function calc_ecc_anom_gpu, so you can see how to use this technique for your project.
 
 ```julia
-ecc_anom_d = cuzeros(size(mean_anom_d))
+ecc_anom_d = cuzeros(RvPlanetParamT,size(mean_anom_d))
 CuArrays.@time CuArrays.@sync( ecc_anom_d .= calc_ecc_anom_gpu.(mean_anom_d,ecc_d) )
 CuArrays.@time CuArrays.@sync( ecc_anom_d .= calc_ecc_anom_gpu.(mean_anom_d,ecc_d) )
 ```
@@ -196,7 +105,7 @@ plot(Array(mean_anom_d[1,:]), Array(ecc_d[:,1]), ecc_anom_d, st = :contourf)
 ## Minimizing launch overhead in GPU calculations: Kernel fusion
 Of course, we usually want to perform more complicated calculations than just solving one equation.  For example, we might want to solve Kepler's equation so that we can compute the radial velocity of a star under a given model and compare that to observations.  Think back to the time required to launch a GPU kernel compared to the time to perform it's work.  If we launch lots of small kernels and/or constantly move data back and forth between the GPU and CPU memory systems, we won't be able to realize the computational benefits of a GPU.  Therefore, we'll want to "fuse" multiple operations into one kernel and keep most results on the GPU and only move back the final results we need. The following example demonstrates this programming pattern.
 
-While I put the code for solving Kepler's equation in a separate file, now I'd like you to pay closer attention to syntax of writing functions for a GPU, so I've left the code for computing the radial velocity due to a planet on a Keplerian orbit in the notebook.  
+While I put the code for solving Kepler's equation in a separate file, now I'd like you to pay closer attention to syntax of writing functions for a GPU, so I've left the code for computing the radial velocity due to a planet on a Keplerian orbit in the notebook.
 
 ```julia
 """   calc_rv_one_planet(P,K,h,k,M0, time) 
@@ -212,44 +121,62 @@ This differs from usual expressions so as to be differntiable, even at zero ecce
 Based on "An analytical solution for Kepler's problem"
 Pál, András, Monthly Notices of the Royal Astronomical Society, 396, 3, 1737-1742.  2009MNRAS.396.1737P
 """
-function calc_rv_one_planet(P,K,h,k,M0, time)
+function calc_rv_one_planet(P::T1,K::T1,h::T1,k::T1,M0::T1, time::T2)  where {T1<:Number, T2<:Number}
   ecc = sqrt(h*h+k*k)
-  T = typeof(P)
   w = atan(k,h)
-  n = T(2pi)/P
+  n = T1(2pi)/P
   M = time*n-M0
   E = calc_ecc_anom(M,ecc)
   lambda = w+M
   lpesE = lambda+ecc*sin(E)  
   c = cos(lpesE)
   s = sin(lpesE)
-  @assert(0.0<=ecc<1.0)
-  j = sqrt((one(T)-ecc)*(one(T)+ecc))
-  p, q = (ecc == zero(T)) ? (zero(T), zero(T)) : (ecc*sin(E), ecc*cos(E))
-  a = K/(n/sqrt((one(T)-ecc)*(one(T)+ecc)))
-  zdot = a*n/(one(T)-q)*( cos(lambda+p)-k*q/(one(T)+j) )
+  @assert(zero(ecc)<=ecc<one(ecc))
+  j = sqrt((one(T1)-ecc)*(one(T1)+ecc))
+  p, q = (ecc == zero(T1)) ? (zero(T1), zero(T1)) : (ecc*sin(E), ecc*cos(E))
+  a = K/(n/sqrt((one(T1)-ecc)*(one(T1)+ecc)))
+  zdot = a*n/(one(T1)-q)*( cos(lambda+p)-k*q/(one(T1)+j) )
 end
 
-function calc_rv_one_planet_gpu(P,K,h,k,M0, time)
+function calc_rv_one_planet_gpu(P::T1,K::T1,h::T1,k::T1,M0::T1, time::T2) where {T1<:Float32, T2<:Number}
   ecc = CUDAnative.sqrt(h*h+k*k)
-  T = typeof(P)
-  w = CUDAnative.atan2(k,h)
-  n = T(2pi)/P
-  M = mod(time*n-M0,T(2pi))
+  n = T1(2pi)/P
+  M = mod(time*n-M0,T2(2pi))  # Allow for modulus operation to be in Float64 if times are
+  M = T1(M)                   # Once in small range convert to Float32 for speed
   E = calc_ecc_anom_gpu(M,ecc)
-  lambda = w+M   #lambda = mod(w+M,T(2pi))
+  w = CUDAnative.atan2(k,h)
+  lambda = w+M   
   lpesE = lambda+ecc*CUDAnative.sin(E)
   c = CUDAnative.cos(lpesE)
   s = CUDAnative.sin(lpesE)
-  @assert(0.0<=ecc<1.0)
-  j = CUDAnative.sqrt((one(T)-ecc)*(one(T)+ecc))
-  p, q = (ecc == zero(T)) ? (zero(T), zero(T)) : (ecc*CUDAnative.sin(E), ecc*CUDAnative.cos(E))
-  a = K/(n/CUDAnative.sqrt((one(T)-ecc)*(one(T)+ecc)))
-  zdot = a*n/(one(T)-q)*( CUDAnative.cos(lambda+p)-k*q/(one(T)+j) )
+  @assert(zero(ecc)<=ecc<one(ecc))
+  j = CUDAnative.sqrt((one(T2)-ecc)*(one(T2)+ecc))
+  p, q = (ecc == zero(T2)) ? (zero(T2), zero(T2)) : (ecc*CUDAnative.sin(E), ecc*CUDAnative.cos(E))
+  a = K*P/T1(2pi)*CUDAnative.sqrt((one(T2)-ecc)*(one(T2)+ecc))
+  zdot = a*n/(one(T2)-q)*( CUDAnative.cos(lambda+p)-k*q/(one(T2)+j) )
+end
+
+
+function calc_rv_one_planet_gpu_fast(P::T1,K::T1,h::T1,k::T1,M0::T1, time::T2) where {T1<:Float32, T2<:Number}
+  ecc = CUDAnative.sqrt_fast(h*h+k*k)
+  n = T1(2pi)/P
+  M = mod(time*n-M0,T2(2pi))  # Allow for modulus operation to be in Float64 if times are
+  M = T1(M)                   # Once in small range convert to Float32 for speed
+  E = calc_ecc_anom_gpu_fast(M,ecc)
+  w = CUDAnative.atan2(k,h)
+  lambda = w+M   
+  lpesE = lambda+ecc*CUDAnative.sin_fast(E)
+  c = CUDAnative.cos_fast(lpesE)
+  s = CUDAnative.sin_fast(lpesE)
+  @assert(zero(ecc)<=ecc<one(ecc))
+  j = CUDAnative.sqrt((one(T1)-ecc)*(one(T1)+ecc))
+  p, q = (ecc == zero(T1)) ? (zero(T1), zero(T1)) : (ecc*CUDAnative.sin_fast(E), ecc*CUDAnative.cos_fast(E))
+  a = K/(T1(n)/CUDAnative.sqrt((one(T1)-ecc)*(one(T1)+ecc)))
+  zdot = a*n/(one(T1)-q)*( CUDAnative.cos_fast(lambda+p)-k*q/(one(T1)+j) )
 end
 ```
 
-First, notice that each function takes a list of scalars.  We'll use Julia's dot broadcasting to operate on arrays.  Previously, we discussed the danger of having a function take a long list of arguments.  Consider the functions above a low-level interface that a GPU programmer would write and test once, but users wouldn't use.  Then we can reduce the risk of problems and make the code more convenient by defining a composite structure to contain the planet's RV parameters, along with helper functions that unpack the composite type and call the low-level function.  
+First, notice that each function takes a list of scalars.  We'll use Julia's dot broadcasting to operate on arrays.  Previously, we discussed the danger of having a function take a long list of arguments.  Consider the functions above a low-level interface that a GPU programmer would write and test once, but users wouldn't use.  Then we can reduce the risk of problems and make the code more convenient by defining a composite structure to contain the planet's RV parameters, along with helper functions that unpack the composite type and call the low-level function.
 
 ```julia
 struct RvPlanetParam{T<:Number}
@@ -260,14 +187,19 @@ struct RvPlanetParam{T<:Number}
    M0::T
 end
 
-function calc_rv_one_planet(theta::RvPlanetParam, time)
+function calc_rv_one_planet(theta::RvPlanetParam{T1}, time::T2) where {T1<:Number,T2<:Number}
   P,K,h,k,M0 = theta.P, theta.K, theta.h, theta.k, theta.M0
   calc_rv_one_planet(P,K,h,k,M0, time)
 end
 
-function calc_rv_one_planet_gpu(theta::RvPlanetParam, time)
+function calc_rv_one_planet_gpu(theta::RvPlanetParam{T1}, time::T2) where {T1<:Number,T2<:Number}
   P,K,h,k,M0 = theta.P, theta.K, theta.h, theta.k, theta.M0
   calc_rv_one_planet_gpu(P,K,h,k,M0, time)
+end
+
+function calc_rv_one_planet_gpu_fast(theta::RvPlanetParam{T1}, time::T2) where {T1<:Number,T2<:Number}
+  P,K,h,k,M0 = theta.P, theta.K, theta.h, theta.k, theta.M0
+  calc_rv_one_planet_gpu_fast(P,K,h,k,M0, time)
 end
 ```
 
@@ -277,7 +209,7 @@ Now, we could create a nice interface for setting and accessing the data in `RvP
 RvPlanetParam.([4.0,5.0],[10.0,9.0],[0.05,0.05],[-0.1,0.1],[0.1*pi,0.2*pi])
 ```
 
-Now, let's create a set of simulated observations times over ~8 months.  This time, instead of generating the data on the CPU and moving it to the GPU, we'll generate the random values on the GPU (using the `CuArrays` interface to the [CURAND](https://docs.nvidia.com/cuda/curand/index.html) library from the CUDA toolkit), perform arithmetic on the GPU, and then sort the resulting times, all leaving the data on the GPU.  
+Now, let's create a set of simulated observations times over ~8 months.  This time, instead of generating the data on the CPU and moving it to the GPU, we'll generate the random values on the GPU (using the `CuArrays` interface to the [CURAND](https://docs.nvidia.com/cuda/curand/index.html) library from the CUDA toolkit), perform arithmetic on the GPU, and then sort the resulting times, all leaving the data on the GPU.
 
 ```julia
 import CuArrays: CURAND.curand, CURAND.curandn
@@ -287,7 +219,7 @@ import CuArrays: CURAND.curand, CURAND.curandn
 num_obs = 200
 min_obs_time = 0.0f0
 max_obs_time = 240.0f0
-times_d = min_obs_time .+ (max_obs_time-min_obs_time) .* curand(num_obs) 
+times_d = min_obs_time .+ (max_obs_time-min_obs_time) .* curand(Float64,num_obs) 
 sort!(times_d)
 ```
 
@@ -300,15 +232,23 @@ h_true = 0.05
 k_true = 0.10
 M0_true = pi/4
 sigma_obs = 1.0f0
-RvPlanetParamT = GPUArrays.supports_double(0) ? Float64 : Float32
 param_h = [RvPlanetParam{RvPlanetParamT}(P_true,K_true,h_true,k_true,M0_true)]
+param_d = cu(param_h)
 ```
 
 We can compute the radial velocities under the true model, either on the GPU.
 
 ```julia
-rvs_true_d = calc_rv_one_planet.(param_h,times_d)
-rvs_obs_d = rvs_true_d .+ sigma_obs .* curandn(num_obs)
+using CUDAnative
+```
+
+```julia
+rvs_true_d = cuzeros(Float32,num_obs)
+rvs_true_fast_d = cuzeros(Float32,num_obs)
+#@code_warntype  calc_rv_one_planet_gpu.(param_d,times_d)
+rvs_true_d = calc_rv_one_planet_gpu.(param_d,times_d)
+#rvs_true_fast_d = calc_rv_one_planet_gpu_fast.(param_d,times_d)
+rvs_obs_d = rvs_true_d .+ sigma_obs .* curandn(RvPlanetParamT,num_obs)
 ```
 
 Note that we passed an array of RvPlanetParam, so we're using good programming practices, and our helper function allows Julia to convert that into call the low-level function for the GPU.  We can bring the results back to the CPU using `Array`.
@@ -321,32 +261,34 @@ Often, we need to explore a large parameter space to search for a good model.  F
 
 ```julia
 num_param = 10000
-Plist_d = P_true .* ( 1.0 .+ 0.01 .* (curand(num_param).-0.5) )
-Klist_d = K_true .* ( 1.0 .+ 0.1  .* (curand(num_param).-0.5) )
-hlist_d = h_true .+ 0.1 .* (curand(num_param).-0.5)
-klist_d = k_true .+ 0.1 .* (curand(num_param).-0.5)
-M0list_d = M0_true .+ 2pi .* 0.1 .* (curand(num_param).-0.5)
+Plist_d = P_true .* ( 1.0 .+ 0.01 .* (curand(RvPlanetParamT,num_param).-0.5) )
+Klist_d = K_true .* ( 1.0 .+ 0.1  .* (curand(RvPlanetParamT,num_param).-0.5) )
+hlist_d = h_true .+ 0.1 .* (curand(RvPlanetParamT,num_param).-0.5)
+klist_d = k_true .+ 0.1 .* (curand(RvPlanetParamT,num_param).-0.5)
+M0list_d = M0_true .+ 2pi .* 0.1 .* (curand(RvPlanetParamT,num_param).-0.5)
 CuArrays.@time CuArrays.@sync ( params_d = RvPlanetParam{RvPlanetParamT}.(Plist_d, Klist_d, hlist_d, klist_d, M0list_d); )
 ```
 
-Now we'll want to evaluate the Planet's velocity at each time and for each set of model parameters.  We can acheive that using Julia's [`repeat`](https://docs.julialang.org/en/v1/base/arrays/#Base.repeat) and [`reshape`](https://docs.julialang.org/en/v1/base/arrays/#Base.reshape) functions to minimize unnecessary copying of the data, just as we would do the CPU.  It may be useful to look at each of the arrays being created, to help understand the upcoming function call.
+Now we'll want to evaluate the Planet's velocity at each time and for each set of model parameters.  We can acheive that using Julia's [`repeat`](https://docs.julialang.org/en/v1/base/arrays/#Base.repeat) and [`reshape`](https://docs.julialang.org/en/v1/base/arrays/#Base.reshape) functions to minimize unnecessary copying of the data, just as we would do the CPU.  It may be useful to look at the size and/or contents of the new CuArrays being being created, to help understand the upcoming function call.  
+
+(For some reason the Weave script gave an error when I left out the semi-colons.  If you remove the semi-colons, then I'd suggest restoring the semi-colons after each of the next two cells before submitting this notebook as a batch job.)
 
 ```julia
-CuArrays.@time expanded_times_d = reshape(repeat(times_d,num_param),num_obs,num_param)
+CuArrays.@time expanded_times_d = reshape(repeat(times_d,num_param),num_obs,num_param);
 ```
 
 ```julia
-CuArrays.@time expanded_params_d = reshape(params_d,1,num_param)
+CuArrays.@time expanded_params_d = reshape(params_d,1,num_param);
 ```
 
 How much GPU memory was required for each of the above operations.  How does that compare to creating new arrays of `num_obs`x`num_param`?
     
 INSERT RESPONSE
 
-Now, let's compute the radial velocity at each time for each set of parameters.  We'll time the results and compare to the time on the CPU.  Remember, that the first call to a function with a given set of parameter types results in an expensive compile operation on either the CPU or GPU.  So we'll run each twice.  
+Now, let's compute the radial velocity at each time for each set of parameters.  We'll time the results and compare to the time on the CPU.  Remember, that the first call to a function with a given set of parameter types results in an expensive compile operation on either the CPU or GPU.  So we'll run each twice.
 
 ```julia
-rvs_d = cuzeros(num_param,num_obs)
+rvs_d = cuzeros(RvPlanetParamT,num_param,num_obs)
 CuArrays.@time CuArrays.@sync( rvs_d .=  calc_rv_one_planet_gpu.(reshape(params_d,num_param,1), reshape(repeat(times_d,num_param),num_obs,num_param)' ) )
 CuArrays.@time CuArrays.@sync( rvs_d .=  calc_rv_one_planet_gpu.(reshape(params_d,num_param,1), reshape(repeat(times_d,num_param),num_obs,num_param)' ) )
 ```
@@ -396,7 +338,7 @@ How much longer does it take to send the array of all velocities back to the hos
 
 INSERT RESPONSE
 
-In some cases, we may not even need to send all of the results back to the CPU.  For example, maybe we just want to find the best fitting model 
+In some cases, we may not even need to send all of the results back to the CPU.  For example, maybe we just want to find the best fitting model
 
 ```julia
 CuArrays.@time (chisq_good, idx_good) = findmin(chisq_d)

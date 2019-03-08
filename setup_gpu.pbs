@@ -14,18 +14,14 @@
 ## replace with your email
 ##PBS -M YOUR_EMAIL_HERE@psu.edu       
 ## Specificy job name, so easy to find in qstat
-#PBS -N Lab7Ex1Setup
+#PBS -N Lab7SetupGpu
 
 echo "# Starting job $PBS_JOBNAME"
 date
 echo "# Job id: $PBS_JOBID"
 echo "# Change into $PBS_O_WORKDIR"
 cd $PBS_O_WORKDIR            # Change into directory where job was submitted from
-#echo "module load cuda"
-#module load cuda
-#export CUBLAS=/gpfs/group/ebf11/default/sw/cuda/lib64/libcublas.so
 echo "# Set directory where CUDA toolkit can be found"
-#export CUDA_HOME=/gpfs/group/ebf11/default/sw/cuda
 export CUDA_HOME=/gpfs/group/ebf11/default/astro528/cuda
 echo "# Start Julia and instantiate Project to install packages"
 julia -e 'using Pkg; Pkg.activate("."); Pkg.instantiate()'

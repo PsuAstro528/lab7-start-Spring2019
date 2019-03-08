@@ -21,8 +21,6 @@ date
 echo "Job id: $PBS_JOBID"
 echo "About to change into $PBS_O_WORKDIR"
 cd $PBS_O_WORKDIR 
-#export CUBLAS=/gpfs/group/ebf11/default/sw/cuda/lib64/libcublas.so
-#export CUDA_HOME=/gpfs/group/ebf11/default/sw/cuda
 export CUDA_HOME=/gpfs/group/ebf11/default/astro528/cuda
 echo "About to start Julia"
 julia -e 'using Weave; weave("ex2.ipynb",doctype="github",fig_path="ex2_figs")'
