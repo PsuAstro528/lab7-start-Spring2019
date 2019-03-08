@@ -209,12 +209,12 @@ Optional arguments:
 - num_samples:  How many times to perform each calculation being benchmarked
 - calc_solve: Whether to benchmark linear solve (false)
 - run_cpu:  Whether to perform benchmarks on cpu (true)
-- run_gpu:  Whether to perform benchmarks on gpu (true if GPUArrays is loaded)
+- run_gpu:  Whether to perform benchmarks on gpu (false)
 - verbose:  Whether to print status updates.
 Output: A dictionary with results of each benchmark performed and 
         optionally the difference in final CPU and GPU calculations (if both are run).  
 """
-function run_benchmarks(N::Integer; num_samples=3, run_cpu=true, run_gpu=isdefined(Main,:GPUArrays), 
+function run_benchmarks(N::Integer; num_samples=3, run_cpu=true, run_gpu=false),
                             mat_vec=true, mat_mat=false, compare=false, verbose=false )
    verbose && println("Benchmarking with problem size = ",N)
    A_h = randn(N,N)
@@ -265,7 +265,8 @@ First, do a quick test to see how it works.
 
 
 ```julia
-benchmark_result = run_benchmarks(128,verbose=true,mat_vec=true,compare=true)
+have_gpu = @isdefined GPUArrays
+benchmark_result = run_benchmarks(128,verbose=true,mat_vec=true,use_gpu=have_gpu,compare=true)
 ```
 
 We'll extract the median run time for the multiplication using the CPU with expressions like
@@ -283,7 +284,7 @@ using Plots
 
 ```julia
 problem_sizes = [2^i for i in 2:9]
-benchmark_results = map( s->run_benchmarks(s,mat_mat=true), problem_sizes )
+benchmark_results = map( s->run_benchmarks(s,mat_mat=true,run_gpu=have_gpu), problem_sizes )
 ```
 
 ```julia
