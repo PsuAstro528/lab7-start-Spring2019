@@ -155,25 +155,6 @@ function calc_rv_one_planet_gpu(P::T1,K::T1,h::T1,k::T1,M0::T1, time::T2) where 
   a = K*P/T1(2pi)*CUDAnative.sqrt((one(T2)-ecc)*(one(T2)+ecc))
   zdot = a*n/(one(T2)-q)*( CUDAnative.cos(lambda+p)-k*q/(one(T2)+j) )
 end
-
-
-function calc_rv_one_planet_gpu_fast(P::T1,K::T1,h::T1,k::T1,M0::T1, time::T2) where {T1<:Float32, T2<:Number}
-  ecc = CUDAnative.sqrt_fast(h*h+k*k)
-  n = T1(2pi)/P
-  M = mod(time*n-M0,T2(2pi))  # Allow for modulus operation to be in Float64 if times are
-  M = T1(M)                   # Once in small range convert to Float32 for speed
-  E = calc_ecc_anom_gpu_fast(M,ecc)
-  w = CUDAnative.atan2(k,h)
-  lambda = w+M   
-  lpesE = lambda+ecc*CUDAnative.sin_fast(E)
-  c = CUDAnative.cos_fast(lpesE)
-  s = CUDAnative.sin_fast(lpesE)
-  @assert(zero(ecc)<=ecc<one(ecc))
-  j = CUDAnative.sqrt((one(T1)-ecc)*(one(T1)+ecc))
-  p, q = (ecc == zero(T1)) ? (zero(T1), zero(T1)) : (ecc*CUDAnative.sin_fast(E), ecc*CUDAnative.cos_fast(E))
-  a = K/(T1(n)/CUDAnative.sqrt((one(T1)-ecc)*(one(T1)+ecc)))
-  zdot = a*n/(one(T1)-q)*( CUDAnative.cos_fast(lambda+p)-k*q/(one(T1)+j) )
-end
 ```
 
 First, notice that each function takes a list of scalars.  We'll use Julia's dot broadcasting to operate on arrays.  Previously, we discussed the danger of having a function take a long list of arguments.  Consider the functions above a low-level interface that a GPU programmer would write and test once, but users wouldn't use.  Then we can reduce the risk of problems and make the code more convenient by defining a composite structure to contain the planet's RV parameters, along with helper functions that unpack the composite type and call the low-level function.
