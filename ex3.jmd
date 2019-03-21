@@ -88,7 +88,7 @@ end
 grid_1d_d
 ```
 
-The code above assumes that there's only one block running.  If there were multiple blocks launched, then we'd want to make sure that different threads down't duplicate work (wasteful) or overwrite each other (dangerous).  The kernel below shows a better way to choose the indicies that the kernel writes to.  Note that it still assumes that the number of threads per block is of the form (N,1,1) and the number of blocks is of the form (M,1,1). You can think of this as using a 1dimensional block and 1-d grid of blocks.  This makes a lot of sense for 1-d arrays, but won't always be the case (e..g, when working with 2-d arrays).  
+The code above assumes that there's only one block running.  If there were multiple blocks launched, then we'd want to make sure that different threads down't duplicate work (wasteful) or overwrite each other (dangerous).  The kernel below shows a better way to choose the indicies that the kernel writes to.  Note that it still assumes that the number of threads per block is of the form (N,1,1) and the number of blocks is of the form (M,1,1). You can think of this as using a 1dimensional block and 1-d grid of blocks.  This makes a lot of sense for 1-d arrays, but won't always be the case (e..g, when working with 2-d arrays).
 
 ```julia
 function init_1d_grid!(out,N::Integer,min=-1,max=1)
@@ -209,7 +209,7 @@ Assuming that the test worked, proceed to benchmark the function.
 
 How does performance of the GPU version compare to the CPU version?  What about if you run this on a CyberLAMP GPU node?
 
-INSERT RESPONCE
+INSERT RESPONCE **The runtime was about 36 ms.**
 
 If you're feeling overwhelmed, then you can stop here.  On the other hand, if you think you might use this technique in your project, then you'll probably want to follow along below to see an example of performing a non-trivial calculation on the GPU efficiently.
 
@@ -513,12 +513,8 @@ Now, benchmark the GPU and CPU versions and compare their performance.
 How does the performance of the GPU compare to the the CPU version on the ACI-I server?  What about on a CyberLAMP GPU node?
 If one wanted to further improve the GPU performance, what changes would likely increase the performance further?  
 
-INSERT RESPONCE
+INSERT RESPONCE **The runtimes were about 443 ms versus 3.2 seconds.**
 
 If you're considering writing GPU kernels for your project code, then try experimenting with the number of threads per block to see how it affects the performance.  Report your findings.
         
 INSERT RESPONCE
-
-
-```julia
-```

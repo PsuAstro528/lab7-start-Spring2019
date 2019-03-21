@@ -149,7 +149,7 @@ b_comp_h = Array(b_d)
 
 Next, we'll compare the results.  What do you expect for the maximum difference in any element in `b`?
         
-INSERT RESPONSE
+INSERT RESPONSE **The difference will be very small. Probably as small as 1e-10 or something.**
 
 ```julia
 maximum(b_comp_h .- b_h)
@@ -157,7 +157,7 @@ maximum(b_comp_h .- b_h)
 
 How did the results compare to your expectations?  
 
-INSERT RESPONSE
+INSERT RESPONSE **2e-5, not quite as small as I thought, but still pretty small.**
 
 One thing to keep in mind is that most "consumer grade" GPUs are designed to only perform single-precision arithmetic.  Even GPUs that do support double precission are often significantly slower at double precission arithmetic than single precission.  The difference is particularly noticable for "consumer grade" GPUs.  When we need double precission, we can specify that explicitly.  Below we will use double precision on the GPU and test its accuracy.
 
@@ -169,6 +169,8 @@ maximum(Array(b_d64) .- b_h)
 ```
 
 Now, how do the results compare to your expectations?  
+
+RESPONSE: **Given the previous small value, I expect double precision to lead to even small results. Which it did: 1.7e-13.**
 
 
 ## Benchmarking GPU for Linear Algebra
@@ -187,7 +189,7 @@ Calls to the GPU run asynchronously.  So if we want to benchmark how long is req
 
 How long does it take to launch the GPU kernel and exit?
 
-INSERT RESPONSE
+INSERT RESPONSE **The median is $14.8 \times 10^{-6}$ seconds.**
 
 ```julia
 @benchmark CuArrays.@sync( b_d = $A_d*$x_d) samples=5
@@ -195,7 +197,7 @@ INSERT RESPONSE
 
 How long did it take to complete the calculation and store to to an array on the GPU?  How does this compare to the cost of launching the kernel?  What are the implications for the ammount of work you'd want per GPU call in order to make efficient use of the GPU?
 
-INSERT RESPONSE
+INSERT RESPONSE **The median runtime is $121\times 10^{-6}$ seconds. The launch time is about 10% of the runtime. Ideally, you want to avoid being bottlenecked by the launch time. If you are going to use GPU, then the amount of work should yield a large runtime compared to the launch. Otherwise, it may be better to use CPU.**
 
 ```julia
 @benchmark ( b_d .= $A_d*$x_d;  GPUArrays.synchronize(b_d); ) samples=5
@@ -346,4 +348,7 @@ display(plt)
 Does your project involve linear algebra on large matrices/vectors?  Does it use thousands of linear algebra calculations with smaller matrices/vectors?
 If yes to either, then discuss the implications of the results from this exercise for the suitability of using GPUs to accelerate the linear algebra in your class project.  What precission would you use?
 
-INSERT RESPONSE
+INSERT RESPONSE **Currently my project does not involve linear algebra. But I can image that I could incorporate ways to do thousands of calculations. I would use double precision in order to increase the accuracy.**
+
+```julia
+```
