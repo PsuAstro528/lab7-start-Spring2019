@@ -1,0 +1,69 @@
+Starting job Lab7Ex2
+Tue Mar 26 12:05:12 EDT 2019
+Job id: 11779510.torque01.util.production.int.aci.ics.psu.edu
+About to change into /storage/work/a/axp1175/astro528/lab7-apellegrino
+About to start Julia
+gksqt: cannot connect to X server 
+connect: Connection refused
+GKS: can't connect to GKS socket application
+Did you start 'gksqt'?
+
+GKS: Open failed in routine OPEN_WS
+GKS: GKS not in proper state. GKS must be either in the state WSOP or WSAC in routine ACTIVATE_WS
+gksqt: cannot connect to X server 
+connect: Connection refused
+GKS: can't connect to GKS socket application
+Did you start 'gksqt'?
+
+GKS: Open failed in routine OPEN_WS
+GKS: GKS not in proper state. GKS must be either in the state WSOP or WSAC in routine ACTIVATE_WS
+gksqt: cannot connect to X server 
+connect: Connection refused
+GKS: can't connect to GKS socket application
+Did you start 'gksqt'?
+
+GKS: Open failed in routine OPEN_WS
+GKS: GKS not in proper state. GKS must be either in the state WSOP or WSAC in routine ACTIVATE_WS
+[ Info: Weaving chunk 1 from line 0
+[ Info: Weaving chunk 2 from line 0
+[ Info: Weaving chunk 3 from line 0
+[ Info: Weaving chunk 4 from line 0
+[ Info: Weaving chunk 5 from line 0
+[ Info: Weaving chunk 6 from line 0
+[ Info: Weaving chunk 7 from line 0
+[ Info: Weaving chunk 8 from line 0
+[ Info: Weaving chunk 9 from line 0
+[ Info: Weaving chunk 10 from line 0
+[ Info: Weaving chunk 11 from line 0
+[ Info: Weaving chunk 12 from line 0
+[ Info: Weaving chunk 13 from line 0
+[ Info: Weaving chunk 14 from line 0
+[ Info: Weaving chunk 15 from line 0
+[ Info: Weaving chunk 16 from line 0
+[ Info: Weaving chunk 17 from line 0
+[ Info: Weaving chunk 18 from line 0
+[ Info: Weaving chunk 19 from line 0
+[ Info: Weaving chunk 20 from line 0
+[ Info: Weaving chunk 21 from line 0
+[ Info: Weaving chunk 22 from line 0
+[ Info: Weaving chunk 23 from line 0
+[ Info: Weaving chunk 24 from line 0
+[ Info: Weaving chunk 25 from line 0
+[ Info: Weaving chunk 26 from line 0
+[ Info: Weaving chunk 27 from line 0
+[ Info: Weaving chunk 28 from line 0
+[ Info: Weaving chunk 29 from line 0
+[ Info: Weaving chunk 30 from line 0
+[ Info: Weaving chunk 31 from line 0
+[ Info: Weaving chunk 32 from line 0
+[ Info: Weaving chunk 33 from line 0
+[ Info: Weaving chunk 34 from line 0
+[ Info: Weaving chunk 35 from line 0
+[ Info: Weaving chunk 36 from line 0
+[ Info: Weaving chunk 37 from line 0
+[ Info: Weaving chunk 38 from line 0
+[ Info: Weaving chunk 39 from line 0
+[ Info: Report weaved to ex2.md
+Julia completed
+Done
+Tue Mar 26 12:07:11 EDT 2019
